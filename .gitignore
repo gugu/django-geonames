@@ -1,1 +1,4 @@
 geonames/data
+*.pyc
+build/*
+.idea/*
