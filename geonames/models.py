@@ -1,5 +1,7 @@
 from django.contrib.gis.db import models
 from django.conf import settings
+from transmeta import TransMeta
+
 
 class BigIntegerField(models.PositiveIntegerField):
     def db_type(self, connection):
@@ -18,7 +20,7 @@ class Admin1Code(models.Model):
     objects = models.GeoManager()
 
     def __unicode__(self):
-        return u': '.join([self.code, self.name])
+        return u': '.join([unicode(self.code), unicode(self.name)])
 
 class Admin2Code(models.Model):
     code = models.CharField(max_length=32)
@@ -27,7 +29,7 @@ class Admin2Code(models.Model):
     objects = models.GeoManager()
 
     def __unicode__(self):
-        return u': '.join([self.code, self.name])
+        return u': '.join([unicode(self.code), unicode(self.name)])
 
 class TimeZone(models.Model):
     tzid = models.CharField(max_length=30)
@@ -41,15 +43,15 @@ class TimeZone(models.Model):
 
 class GeonameManager(models.GeoManager):
     def countries(self, *args, **kwargs):
-        '''
+        """
         Filter returns only countries
-        '''
+        """
         return super(GeonameManager, self).filter(fcode__in=['PCLI']).filter(*args, **kwargs)
 
     def continents(self, *args, **kwargs):
-        '''
+        """
         Filter returns only continents
-        '''
+        """
         return super(GeonameManager, self).filter(fcode__in=['CONT']).filter(*args, **kwargs)
 
 class Geoname(models.Model):
@@ -106,3 +108,14 @@ class Alternate(models.Model):
 
     def __unicode__(self):
         return self.geoname.name
+
+class LocalName(models.Model):
+    __metaclass__ = TransMeta
+    geoname = models.OneToOneField(Geoname, related_name='local_name')
+    name = models.CharField(max_length=200)
+
+    def __unicode__(self):
+        return self.name
+
+    class Meta:
+        translate = ('name',)

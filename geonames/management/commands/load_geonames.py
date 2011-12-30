@@ -1,19 +1,23 @@
-import datetime, os, sys
+import datetime, os
 from optparse import make_option
 
-from django.db import connection, models
-from django.core.management import call_command, sql, color
+from django.db import connection
+from django.core.management import call_command
 from django.core.management.base import NoArgsCommand
 from django.conf import settings
 
 from geonames import models as m
+from geonames.models import LocalName
+
 Alternate = m.Alternate
 Geoname = m.Geoname
 GEONAMES_DATA = os.path.abspath(os.path.join(os.path.dirname(m.__file__), 'data'))
 GEONAMES_SQL = os.path.abspath(os.path.join(os.path.dirname(m.__file__), 'sql'))
 
 def get_cmd_options():
-    "Obtains the command-line PostgreSQL connection options for shell commands."
+    """
+    Obtains the command-line PostgreSQL connection options for shell commands.
+    """
     # The db_name parameter is optional
     options = ''
     db_settings = settings.DATABASES['default']
@@ -27,15 +31,15 @@ def get_cmd_options():
         options += '-p %s ' % db_settings['PORT']
     return options
 
-class Command(NoArgsCommand):
 
+class Command(NoArgsCommand):
     option_list = NoArgsCommand.option_list + (
         make_option('-t', '--time', action='store_true', dest='time', default=False,
-                    help='Print the total time in running this command'),
+            help='Print the total time in running this command'),
         make_option('--no-alternates', action='store_true', dest='no_alternates', default=False,
-                    help='Disable loading of the Geonames alternate names data.'),
+            help='Disable loading of the Geonames alternate names data.'),
         make_option('--no-geonames', action='store_true', dest='no_geonames', default=False,
-                    help='Disable loading of the Geonames data.'),
+            help='Disable loading of the Geonames data.'),
         )
 
     def handle_noargs(self, **options):
@@ -48,7 +52,7 @@ class Command(NoArgsCommand):
         db_opts = get_cmd_options()
 
         fromfile_cmd = 'psql %(db_opts)s -f %(sql_file)s'
-        fromfile_args = {'db_opts' : db_opts,
+        fromfile_args = {'db_opts': db_opts,
                          }
 
         ### COPY'ing into the Geonames table ###
@@ -60,10 +64,10 @@ class Command(NoArgsCommand):
         # reduces disk I/O.
         copy_sql = "COPY %s (geonameid,name,alternates,fclass,fcode,country,cc2,admin1,admin2,admin3,admin4,population,elevation,topo,timezone,moddate,point) FROM STDIN;" % db_table
         copy_cmd = 'gunzip -c %(gz_file)s | psql %(db_opts)s -c "%(copy_sql)s"'
-        copy_args = {'gz_file' : os.path.join(GEONAMES_DATA, 'allCountries.gz'),
-                     'db_opts' : db_opts,
-                     'copy_sql' : copy_sql
-                     }
+        copy_args = {'gz_file': os.path.join(GEONAMES_DATA, 'allCountries.gz'),
+                     'db_opts': db_opts,
+                     'copy_sql': copy_sql
+        }
 
         # Printing the copy command and executing it.
         if not options['no_geonames']:
@@ -81,11 +85,11 @@ class Command(NoArgsCommand):
 
         db_table = Alternate._meta.db_table
         copy_sql = "COPY %s (alternateid,geoname_id,isolanguage,variant,preferred,short) FROM STDIN;" % db_table
-        copy_cmd = 'zcat %(gz_file)s | psql %(db_opts)s -c "%(copy_sql)s"'
-        copy_args = {'gz_file' : os.path.join(GEONAMES_DATA, 'alternateNames.gz'),
-                     'db_opts' : get_cmd_options(),
-                     'copy_sql' : copy_sql
-                     }
+        copy_cmd = 'gunzip -c %(gz_file)s | psql %(db_opts)s -c "%(copy_sql)s"'
+        copy_args = {'gz_file': os.path.join(GEONAMES_DATA, 'alternateNames.gz'),
+                     'db_opts': get_cmd_options(),
+                     'copy_sql': copy_sql
+        }
 
         if not options['no_alternates']:
             fromfile_args['sql_file'] = os.path.join(GEONAMES_SQL, 'drop_alternate_indexes.sql')
@@ -97,6 +101,17 @@ class Command(NoArgsCommand):
             fromfile_args['sql_file'] = os.path.join(GEONAMES_SQL, 'create_alternate_indexes.sql')
             print(fromfile_cmd % fromfile_args)
             os.system(fromfile_cmd % fromfile_args)
+            cursor = connection.cursor()
+            list_sql = []
+            insert_sql = []
+            for language in settings.LANGUAGES:
+                insert_sql.append('name_%s' % language[0])
+            for language in settings.LANGUAGES:
+                list_sql.append(
+                    "(select variant from geonames_alternate where geoname_id=geonameid and isolanguage='%s' order by preferred desc limit 1) as name_%s" %
+                    (language[0], language[0]))
+            denorm_sql = "INSERT INTO geonames_localname (geoname_id, %s) select geonameid, %s from geonames_geoname" % (", ".join(insert_sql), ", ".join(list_sql))
+            cursor.execute(denorm_sql)
 
         # Done
         if options['time']: print('\nCompleted in %s' % (datetime.datetime.now() - start_time))

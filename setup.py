@@ -10,6 +10,7 @@ setup(name='django-geonames',
       url='https://github.com/ramusus/django-geonames/',
       packages = find_packages(),
       include_package_data = True,
+      install_requires = ['django-transmeta'],
       package_data = {
           'geonames' : ['sql/*.sql']
       }
